@@ -1,0 +1,16 @@
+version: '3.9'
+
+volumes:
+  shared-workspace:
+    name: "cassandra-file-system"
+    driver: local
+services:
+  cassandra:
+    image: cassandra:4.0
+    ports:
+      - 9042:9042
+    volumes:
+      - shared-workspace:/var/lib/cassandra
+    environment:
+      - CASSANDRA_CLUSTER_NAME=citizix
+

@@ -1,0 +1,8 @@
+0-panic, emerg
+1-alert
+2-crit
+3-error, err
+4-warning, warm
+5-notice
+6-info
+7-debug
