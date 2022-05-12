@@ -1,7 +1,8 @@
 package bdtc.spark;
 
 import java.util.*;
-import lombok.extern.log4j.Log4j;
+import java.lang.NullPointerException;
+import org.slf4j.Logger;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.spark.SparkConf;
 import org.apache.spark.streaming.Durations;
@@ -15,7 +16,6 @@ import scala.Tuple2;
 
 
 
-@Log4j
 public class SparkStreamingApplication {
     static String cassandraAddress = "localhost:9042";
     static String kafkaAddress = "localhost:29092";
@@ -27,7 +27,6 @@ public class SparkStreamingApplication {
         Collection<String> topics = Arrays.asList(
                 "area_1", "area_2", "area_3", "area_4", "area_5", "area_6", "area_7", "area_8", "area_9", "area_10"
         );
-
         /*
         Spark configuration
         set app name and address cassandra
@@ -36,14 +35,13 @@ public class SparkStreamingApplication {
         sparkConf.setMaster("local[*]");
         sparkConf.setAppName("SensorApproximate");
         sparkConf.set("spark.cassandra.connection.host", cassandraAddress);
-
+        final Logger logger = sparkConf.log();
         /*
         Setup Spark Streaming context
          */
         JavaStreamingContext streamingContext = new JavaStreamingContext(
-                sparkConf, Durations.seconds(1)
+                sparkConf, Durations.seconds(10)
         );
-
         /*
         Setup kafka settings
          */
@@ -54,7 +52,6 @@ public class SparkStreamingApplication {
         kafkaParams.put("group.id", "spark-streaming-approximate-value");
         kafkaParams.put("auto.offset.reset", "latest");
         kafkaParams.put("enable.auto.commit", false);
-
         /*
         Create stream from kafka
          */
@@ -64,7 +61,6 @@ public class SparkStreamingApplication {
                   LocationStrategies.PreferConsistent(),
                   ConsumerStrategies.Subscribe(topics, kafkaParams)
           );
-
         /*
         Extract data from kafka from topics
          */
@@ -72,6 +68,7 @@ public class SparkStreamingApplication {
                 .mapToPair(
                     record -> new Tuple2<>(record.topic(), record.value())
                 );
+        logger.info("========Input data from kafka: " + stream.toString() + "=========");
         /*
         Convert to lines
          */
@@ -101,23 +98,24 @@ public class SparkStreamingApplication {
                     return null;
                 }
         );
-        measurements = Approximate.mean(measurements);
         /*
-        Extract only values for Cassandra
+        Extract only values for Cassandra and calculate mean
          */
-        JavaDStream<Measurement> cassandraMeasurements = measurements.map(Tuple2::_2);
-        /*
-        Save to Cassandra table spark.measurements
-         */
-        cassandraMeasurements.foreachRDD(
-                rdd -> {
-                    javaFunctions(rdd)
-                            .writerBuilder("spark", "measurements", mapToRow(Measurement.class))
-                            .saveToCassandra();
-                }
-        );
-
-
+        try {
+            JavaDStream<CassandraSchema> cassandraMeasurements = Approximate.mean(measurements);
+            /*
+            Save to Cassandra table spark.measurements
+            */
+            cassandraMeasurements.foreachRDD(
+                    rdd -> {
+                        javaFunctions(rdd)
+                                .writerBuilder("spark", "measurements", mapToRow(CassandraSchema.class))
+                                .saveToCassandra();
+                    }
+            );
+        } catch (NullPointerException e) {
+            e.printStackTrace();
+        }
         /*
         Run app
          */

@@ -28,4 +28,13 @@ public class Measurement implements Serializable {
     public String getSensorName() { return this.sensorName; }
 
     public Integer getSensorValue() { return this.sensorValue; }
+
+    public static Measurement getMinDate(Measurement measurement1, Measurement measurement2) {
+        Date date1 = measurement1.getDateTime();
+        Date date2 = measurement2.getDateTime();
+        if (date1.before(date2))
+            return measurement1;
+        else
+            return measurement2;
+    }
 }
