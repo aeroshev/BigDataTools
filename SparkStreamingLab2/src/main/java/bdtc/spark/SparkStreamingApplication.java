@@ -14,8 +14,6 @@ import static com.datastax.spark.connector.japi.CassandraJavaUtil.*;
 import java.util.Date;
 import scala.Tuple2;
 
-
-
 public class SparkStreamingApplication {
     static String cassandraAddress = "localhost:9042";
     static String kafkaAddress = "localhost:29092";
@@ -40,7 +38,7 @@ public class SparkStreamingApplication {
         Setup Spark Streaming context
          */
         JavaStreamingContext streamingContext = new JavaStreamingContext(
-                sparkConf, Durations.seconds(10)
+                sparkConf, Durations.seconds(1)
         );
         /*
         Setup kafka settings
@@ -50,8 +48,8 @@ public class SparkStreamingApplication {
         kafkaParams.put("key.deserializer", StringDeserializer.class);
         kafkaParams.put("value.deserializer", StringDeserializer.class);
         kafkaParams.put("group.id", "spark-streaming-approximate-value");
-        kafkaParams.put("auto.offset.reset", "latest");
-        kafkaParams.put("enable.auto.commit", false);
+//        kafkaParams.put("auto.offset.reset", "latest");
+//        kafkaParams.put("enable.auto.commit", false);
         /*
         Create stream from kafka
          */
@@ -61,14 +59,26 @@ public class SparkStreamingApplication {
                   LocationStrategies.PreferConsistent(),
                   ConsumerStrategies.Subscribe(topics, kafkaParams)
           );
+
+        logger.info("==========GET DATA FROM KAFKA============");
         /*
         Extract data from kafka from topics
          */
         JavaPairDStream<String, String> measurementsByTopic = stream
                 .mapToPair(
-                    record -> new Tuple2<>(record.topic(), record.value())
+                    record -> {
+                        logger.info("=====Record from kafka: " + record.toString());
+                        logger.info("=====Value record: " + record.value());
+                        return new Tuple2<>(record.topic(), record.value());
+                    }
                 );
-        logger.info("========Input data from kafka: " + stream.toString() + "=========");
+//        logger.info("========Input data from kafka: " + stream + "=========");
+        measurementsByTopic = measurementsByTopic.mapToPair(
+                measure -> {
+                    logger.info("Topic: " + measure._1 + " Value: " + measure._2);
+                    return measure;
+                }
+        );
         /*
         Convert to lines
          */
@@ -78,11 +88,30 @@ public class SparkStreamingApplication {
         /*
         Casting to Measure object
          */
+        logger.info("==========After flatMapping============");
+        rawMeasurements = rawMeasurements.mapToPair(
+                reccord -> {
+                    logger.info("Topic: " + reccord._1 + " Value: " + reccord._2);
+                    return reccord;
+                }
+        );
+
         JavaPairDStream<String, Measurement> measurements = rawMeasurements.mapValues(
                 measure -> {
+                    if (measure == null || measure.equals(""))
+                        return new Measurement();
+                    logger.info("====Before split: " + measure + "======");
                     String[] patches = measure.split(",");
+                    logger.info("After split");
+                    for (String patch : patches) {
+                        logger.info("=======patch:" + patch + "=====");
+                    }
                     patches = StringUtils.stripAll(patches);
                     try {
+                        logger.info("Iterate");
+                        for (String patch : patches) {
+                            logger.info("=======patch:" + patch + "=====");
+                        }
                         Date parsedDate = Measurement.dateFormat.parse(patches[0]);
                         Integer parsedValue = Integer.parseInt(patches[3]);
 
@@ -93,9 +122,10 @@ public class SparkStreamingApplication {
                                 parsedValue
                         );
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        logger.error("error cast: raw measure " + measure);
+                        logger.error("Exception occured: " + e);
                     }
-                    return null;
+                    return new Measurement();
                 }
         );
         /*

@@ -12,7 +12,12 @@ public class Measurement implements Serializable {
     private String sensorName;
     private Integer sensorValue;
 
-    public Measurement() {}
+    public Measurement() {
+        this.dateTime = new Date();
+        this.areaName = "unknown";
+        this.sensorName = "unknown";
+        this.sensorValue = 0;
+    }
 
     public Measurement(Date dateTime, String areaName, String sensorName, Integer sensorValue) {
         this.dateTime = dateTime;
